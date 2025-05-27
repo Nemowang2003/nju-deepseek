@@ -1,39 +1,22 @@
-import html.parser
-import pkgutil
+import base64
+from Cryptodome.Cipher import AES
+from Cryptodome.Util import Padding
+import lxml
 import tenacity
-import time
 
 OCR = None
-
-
-class HTMLParser(html.parser.HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.data = {}
-        self.salt = ""
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "input":
-            mapping = {k: v for k, v in attrs}
-            if "name" in mapping.keys():
-                k = mapping["name"]
-                v = mapping.get("value", "")
-                self.data.setdefault(k, v)
-            elif mapping["id"] == "pwdDefaultEncryptSalt":
-                self.salt = mapping["value"]
 
 
 class AuthFailureException(Exception):
     pass
 
 
-def encrypted_password(password, key):
-    import execjs
-
-    js_code = pkgutil.get_data(__package__, "js/encrypt.js").decode()
-
-    js = execjs.compile(js_code)
-    return js.call("encryptAES", password, key)
+def encrypt(password, salt):
+    cipher = AES.new(salt.encode("utf-8"), AES.MODE_CBC, iv=("a" * 16).encode("utf-8"))
+    encrypted_password_bytes = cipher.encrypt(
+        Padding.pad(("a" * 64 + password).encode("utf-8"), 16, "pkcs7")
+    )
+    return base64.b64encode(encrypted_password_bytes).decode("utf-8")
 
 
 def validiate_cookies(session):
@@ -63,12 +46,26 @@ def get_auth_retry(session, username, password):
     html_content = session.get(
         "https://authserver.nju.edu.cn/authserver/login?service=https%3A%2F%2Fchat.nju.edu.cn%2Fdeepseek%2F",
     ).text
-    html_parser = HTMLParser()
-    html_parser.feed(html_content)
 
-    mili = int(time.time() * 1000) % 1000
+    login_page = lxml.etree.HTML(html_content)
+    lt = str(login_page.xpath('//*[@id="casLoginForm"]/input[@name="lt"]//@value')[0])
+    dllt = "mobileLogin"
+    execution = str(
+        login_page.xpath('//*[@id="casLoginForm"]/input[@name="execution"]//@value')[0]
+    )
+    eventid = str(
+        login_page.xpath('//*[@id="casLoginForm"]/input[@name="_eventId"]//@value')[0]
+    )
+    rmshown = str(
+        login_page.xpath('//*[@id="casLoginForm"]/input[@name="rmShown"]//@value')[0]
+    )
+    salt = str(login_page.xpath('//*[@id="pwdDefaultEncryptSalt"]//@value')[0])
+
+    session.get(
+        f"https://authserver.nju.edu.cn/authserver/needCaptcha.html?username={username}&pwdEncrypt2=pwdEncryptSalt"
+    )
     image = session.get(
-        f"https://authserver.nju.edu.cn/authserver/captcha.html?ts={mili}",
+        "https://authserver.nju.edu.cn/authserver/captcha.html",
     ).content
 
     if OCR is None:
@@ -80,13 +77,13 @@ def get_auth_retry(session, username, password):
         "https://authserver.nju.edu.cn/authserver/login?service=https%3A%2F%2Fchat.nju.edu.cn%2Fdeepseek%2F",
         data={
             "username": username,
-            "password": encrypted_password(password, html_parser.salt),
+            "password": encrypt(password, salt),
             "captchaResponse": captcha,
-            "lt": html_parser.data["lt"],
-            "dllt": "userNamePasswordLogin",
-            "execution": html_parser.data["execution"],
-            "_eventId": "submit",
-            "rmShown": 1,
+            "lt": lt,
+            "dllt": dllt,
+            "execution": execution,
+            "_eventId": eventid,
+            "rmShown": rmshown,
         },
     )
 

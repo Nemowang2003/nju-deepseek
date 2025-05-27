@@ -9,7 +9,7 @@ A Python package for accessing agents listed on https://chat.nju.edu.cn/deepseek
 - [Features](#features)
 - [Todo](#todo)
 - [Dependencies](#dependencies)
-- [Home Page](#home page)
+- [Home Page](#home-page)
 - [License](#license)
 
 
@@ -56,6 +56,7 @@ with Chat('username', 'password', 'cookiefile') as chat:
 
 ## Features
 - Fully Automated Authentication
+   - [nju-login](https://github.com/SuperKenVery/nju-login) is copied to this project for authentication.
    - [ddddocr 1.0.6](https://github.com/sml2h3/ddddocr) is copied to this project for captcha recognization.
 - Cookie Persistence
 - Markdown Export
@@ -70,7 +71,6 @@ with Chat('username', 'password', 'cookiefile') as chat:
 ## Dependencies
 - **Core**:
   - `onnxruntime`: For captcha recognization.
-  - `pyexecjs`: JS execution for authentication.
   - `python-socketio`: Client for chat session.
   
 - **Optional**:
@@ -78,7 +78,7 @@ with Chat('username', 'password', 'cookiefile') as chat:
 
 
 ## Home Page
-Project URL: [https://github.com/nemowang2003/nju-deepseek](https://github.com/Nemowang/nju-deepseek)
+Project URL: [https://github.com/Nemowang2003/nju-deepseek](https://github.com/Nemowang2003/nju-deepseek)
 
 Contributions are welcome, as I will be leaving NJU soon.
 
