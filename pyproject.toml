@@ -1,0 +1,37 @@
+[project]
+name = "nju-deepseek"
+version = "0.1.0"
+description = "A Python package for accessing agents listed on https://chat.nju.edu.cn/deepseek via command-line interface."
+authors = [
+    {name = "Nemowang",email = "211108100@smail.nju.edu.cn"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "onnxruntime>=1.22.0",
+    "pillow>=11.2.1",
+    "platformdirs>=4.3.8",
+    "pyexecjs>=1.5.1",
+    "python-socketio>=5.13.0",
+    "requests>=2.32.3",
+    "tenacity>=9.1.2",
+]
+
+[project.optional-dependencies]
+completion = [
+    "prompt-toolkit>=3.0.51",
+]
+
+[project.scripts]
+chat = "nju_deepseek.cli:main"
+
+
+[build-system]
+requires = ["uv_build>=0.7.8,<0.8.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+data = ["nju_deepseek/utils/js"]
