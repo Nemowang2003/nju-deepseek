@@ -1,6 +1,5 @@
-from .auth import AuthFailureException, get_auth
+from .auth import get_auth
 
 __all__ = [
-    "AuthFailureException",
     "get_auth",
 ]

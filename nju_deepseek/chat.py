@@ -17,26 +17,34 @@ class NoExpirePolicy(http.cookiejar.DefaultCookiePolicy):
 
 
 class Chat:
-    def __init__(self, username, password, cookie_file, logger=logging.getLogger()):
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        cookie_file=None,
+        logger: logging.Logger = logging.getLogger(),
+    ):
         self.session = requests.Session()
-        self.session.cookies = http.cookiejar.MozillaCookieJar(
-            policy=NoExpirePolicy(),
-        )
-        try:
-            self.session.cookies.load(
-                cookie_file,
+        if cookie_file is not None:
+            self.session.cookies = http.cookiejar.MozillaCookieJar(
+                policy=NoExpirePolicy(),
+            )
+            try:
+                self.session.cookies.load(
+                    cookie_file,
+                    ignore_discard=True,
+                    ignore_expires=True,
+                )
+            except Exception:
+                logger.info("Cookie file corrupted")
+
+        utils.get_auth(self.session, username, password)
+        if cookie_file is not None:
+            self.session.cookies.save(
+                filename=cookie_file,
                 ignore_discard=True,
                 ignore_expires=True,
             )
-        except Exception:
-            pass
-
-        utils.get_auth(self.session, username, password)
-        self.session.cookies.save(
-            filename=cookie_file,
-            ignore_discard=True,
-            ignore_expires=True,
-        )
         self.sio = socketio.SimpleClient(
             handle_sigint=False,
             logger=logger,
@@ -48,7 +56,7 @@ class Chat:
 
     def __exit__(self, *args):
         self.sio.disconnect()
-        self.session.__exit__()
+        self.session.__exit__(*args)
 
     def available_agents(self):
         response = self.session.post(
@@ -91,7 +99,6 @@ class Chat:
 
         self.sio.connect(
             "https://ds.nju.edu.cn/socket.io",
-            transports="polling",
             auth=auth,
         )
 
@@ -128,24 +135,26 @@ class Chat:
     def iter_response(self):
         agent_msg = ""
         response_end = False
-        try:
-            while not response_end:
+        interrupted = False
+        while not response_end:
+            try:
                 response = self.sio.receive()[-1]
                 response_end = response.get("streamingEnd", False)
                 for msg in response["msgs"]:
                     agent_msg += msg["msg"]
                     yield msg["msg"]
 
-        except KeyboardInterrupt:
-            self.sio.emit("stop-gen")
-            agent_msg += "^C"
-            yield "^C"
+            except KeyboardInterrupt:
+                self.sio.emit("stop-gen")
+                interrupted = True
 
-        finally:
-            self.dialogue_content.append(
-                {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "role": "agent",
-                    "content": agent_msg,
-                }
-            )
+        if interrupted:
+            agent_msg += "^C"
+
+        self.dialogue_content.append(
+            {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "role": "agent",
+                "content": agent_msg,
+            }
+        )

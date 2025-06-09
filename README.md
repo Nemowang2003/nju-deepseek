@@ -16,8 +16,8 @@ A Python package for accessing agents listed on https://chat.nju.edu.cn/deepseek
 ## Installation
 ```bash
 pip install nju-deepseek
-# For completion features (optional)
-pip install 'nju-deepseek[completion]'
+# For available cli (optional)
+pip install 'nju-deepseek[cli]'
 ```
 
 
@@ -64,17 +64,28 @@ with Chat('username', 'password', 'cookiefile') as chat:
 ## Todo
 
 - Support recovering from dialogues.
-- Support reconnection.
-- Support other agents.
+- Handle reconnection better.
+- Support more agents.
 
 
 ## Dependencies
-- **Core**:
-  - `onnxruntime`: For captcha recognization.
-  - `python-socketio`: Client for chat session.
+- **Authentication**
+  - lxml
+  - onnxruntime
+  - pillow
+  - pycryptodomex
+  - requests
+  - tenacity
+
+- **Chat Session**
+  - python-socketio[client]
+  - websocket-client
   
-- **Optional**:
-  - `prompt-toolkit`: Advanced command-line interact experience.
+- **Config and Cache File Placement**:
+  - platformdirs
+
+- **REPL**
+  - prompt-toolkit
 
 
 ## Home Page

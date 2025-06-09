@@ -1,14 +1,10 @@
 import base64
 from Cryptodome.Cipher import AES
 from Cryptodome.Util import Padding
-import lxml
+import lxml.etree
 import tenacity
 
 OCR = None
-
-
-class AuthFailureException(Exception):
-    pass
 
 
 def encrypt(password, salt):
@@ -27,22 +23,20 @@ def validiate_cookies(session):
 
 
 def get_auth(session, username, password):
-    if not validiate_cookies(session):
-        try:
+    try:
+        if not validiate_cookies(session):
             get_auth_retry(session, username, password)
-        except tenacity.RetryError:
-            raise AuthFailureException(
-                "Authentication failed with 3 attempts"
-            ) from None
+    except tenacity.RetryError:
+        raise ValueError("Authentication failed") from None
 
 
 @tenacity.retry(
     stop=tenacity.stop_after_attempt(3),
     wait=tenacity.wait_fixed(2),
-    retry=tenacity.retry_if_exception_type(AuthFailureException),
 )
 def get_auth_retry(session, username, password):
     global OCR
+    session.cookies.clear()
     html_content = session.get(
         "https://authserver.nju.edu.cn/authserver/login?service=https%3A%2F%2Fchat.nju.edu.cn%2Fdeepseek%2F",
     ).text
@@ -86,6 +80,5 @@ def get_auth_retry(session, username, password):
             "rmShown": rmshown,
         },
     )
-
     if not validiate_cookies(session):
-        raise AuthFailureException
+        raise ValueError

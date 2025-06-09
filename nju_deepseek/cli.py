@@ -1,25 +1,24 @@
-from nju_deepseek import Chat
+try:
+    import platformdirs
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.completion import Completer, Completion
+    from prompt_toolkit.history import InMemoryHistory
+    from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
+except ImportError:
+    raise ModuleNotFoundError(
+        f"run `pip install '{__package__}[cli]'` to install missing dependencies"
+    ) from None
+
+from . import Chat
 
 import collections
 import json
 import logging
 import os
-import platformdirs
 import subprocess
-import sys
 import tempfile
+from typing import Callable, NamedTuple
 
-try:
-    import readline  # noqa
-except Exception:
-    pass
-
-if not sys.stdin.isatty():
-    print(
-        "Error: This module is designed to be used in an interactive console, aborting...",
-        file=sys.stderr,
-    )
-    exit(1)
 
 CACHE_DIR = platformdirs.user_cache_path("nju-deepseek")
 CACHE_DIR.mkdir(exist_ok=True)
@@ -39,12 +38,12 @@ if not CONFIG_FILE.exists():
     import getpass
 
     USERNAME = input("Username: ")
-    PASSWORD = getpass.getpass()
+    PASSWORD = getpass.getpass("Password: ")
     CONFIG_DIR.mkdir(exist_ok=True)
-    with CONFIG_FILE.open("w") as fp:
+    with CONFIG_FILE.open(mode="w", encoding="utf-8") as fp:
         json.dump({"username": USERNAME, "password": PASSWORD}, fp)
 else:
-    with CONFIG_FILE.open() as fp:
+    with CONFIG_FILE.open(mode="r", encoding="utf-8") as fp:
         data = json.load(fp)
     USERNAME = data["username"]
     PASSWORD = data["password"]
@@ -76,7 +75,7 @@ class RecentHandler(logging.Handler):
             self.file_handler.handle(record)
 
 
-file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
+file_handler = logging.FileHandler(filename=LOG_FILE, mode="a", encoding="utf-8")
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(
     logging.Formatter(
@@ -87,140 +86,141 @@ file_handler.setFormatter(
 recent_handler = RecentHandler(file_handler)
 LOGGER.addHandler(recent_handler)
 
+key_bindings = KeyBindings()
 
-def editor(user_msg: str, chat: Chat):
-    if user_msg != ".editor":
-        return False
+
+@key_bindings.add("c-o")
+def invoke_editor(event: KeyPressEvent):
+    buffer = event.current_buffer
+
     editor = os.environ.get("EDITOR", "vim")
-    with tempfile.NamedTemporaryFile(delete=False) as file:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as file:
         path = file.name
+        file.write(buffer.text)
     try:
         subprocess.run([editor, path])
-        with open(path) as f:
-            user_msg = f.read().strip()
-            if user_msg:
-                print(">>> " + user_msg)
-                chat.send_msg(user_msg)
-                for token in chat.iter_response():
-                    print(token, end="", flush=True)
-            else:
-                print("[Editor exited without content]", file=sys.stderr)
-    except Exception:
-        print("[Error when trying to open $EDITOR]", file=sys.stderr)
+        with open(file=path, mode="r", encoding="utf-8") as f:
+            content = f.read().strip()
+        buffer.text = content
+        buffer.cursor_position = len(buffer.text)
+    except Exception as e:
+        print(f"[An error occured when invoking editor: {e}]")
     finally:
         os.unlink(path)
-    return True
 
 
-def _exit(user_msg: str, _: Chat):
-    if user_msg != ".exit":
-        return False
-    exit(0)
+class CommandEntry(NamedTuple):
+    func: Callable[["Console", list[str]], None]
+    args: str
+    description: str
 
 
-def export(user_msg: str, chat: Chat):
-    if user_msg == ".export":
-        path = chat.memory_id
-    elif user_msg.startswith(".export "):
-        path = user_msg[len(".export ") :]
-    else:
-        return False
-    with (DIALOGUE_DIR / f"{path}.md").open("w") as fp:
-        fp.write("## " + chat.memory_id + "\n\n")
-        for msg in chat.dialogue_content:
+class DotCommandCompleter(Completer):
+    def __init__(self, commands: dict[str, CommandEntry]):
+        self.commands = commands
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor.strip()
+        if not text.startswith("."):
+            return
+        for command, entry in self.commands.items():
+            if command.startswith(text):
+                yield Completion(
+                    command + " ",
+                    start_position=-len(text),
+                    display_meta=entry.description,
+                )
+
+
+class Console:
+    def __init__(self) -> None:
+        self.running = True
+        self.chat: Chat = Chat(USERNAME, PASSWORD, COOKIE_FILE, LOGGER)
+        self.commands: dict[str, CommandEntry] = dict()
+        self.session = PromptSession(
+            completer=DotCommandCompleter(self.commands),
+            complete_in_thread=True,
+            history=InMemoryHistory(),
+            key_bindings=key_bindings,
+        )
+
+    def register_command(self, name: str, *, args: str = "", description: str = ""):
+        def inner(func):
+            self.commands["." + name] = CommandEntry(func, args, description)
+            return func
+
+        return inner
+
+    def interactive(self, initial_agent: str = "DeepSeek-R1-32B"):
+        self.chat.connect_to_agent(initial_agent)
+        self.chat.new_dialogue()
+        print("Type '.help' for help information.")
+        while self.running:
+            try:
+                user_msg: str = self.session.prompt(">>> ").strip()
+                if user_msg.startswith("."):
+                    split = user_msg.split()
+                    command, args = split[0], split[1:]
+                    entry = self.commands.get(command)
+                    if entry is None:
+                        print("[Unknown command]")
+                    else:
+                        entry.func(self, args)
+                elif user_msg:  # not send user_msg when it's empty
+                    self.chat.send_msg(user_msg)
+                    for token in self.chat.iter_response():
+                        print(token, end="", flush=True)
+            except KeyboardInterrupt:
+                pass
+            except EOFError:
+                break
+            print()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.chat.__exit__(*args)
+
+
+console = Console()
+
+
+@console.register_command("help", description="show help message")
+def help_command(console: Console, args: list[str]):
+    for command, entry in sorted(console.commands.items()):
+        print(f"{' '.join([command, entry.args]):30}{entry.description}")
+    print(
+        "",
+        "Press Ctrl+O to open an editor ($EDITOR, default to vim) to edit the input buffer.",
+        "Send SIGINT (Ctrl+C) to interrupt the response or abort current input buffer.",
+        "Send EOF (Ctrl+D) to exit the repl.",
+        sep="\n",
+    )
+
+
+@console.register_command(
+    "export",
+    args="[filename]",
+    description="export dialogue to file",
+)
+def export_command(console: Console, args: list[str]):
+    filename = args[0] if args else console.chat.memory_id
+    with (DIALOGUE_DIR / f"{filename}.md").open(mode="w", encoding="utf-8") as fp:
+        fp.write("## " + console.chat.memory_id + "\n\n")
+        for msg in console.chat.dialogue_content:
             fp.write("**" + msg["timestamp"] + "**\n\n")
             if msg["role"] == "user":
                 fp.write("> ")
             fp.write(msg["content"])
             fp.write("\n\n")
-    print(f"[Successfully saved to {DIALOGUE_DIR}/{path}.md]")
-    return True
+    print(f"[Successfully saved to {DIALOGUE_DIR}/{filename}.md]")
 
 
-def _help(user_msg: str, _: Chat):
-    if user_msg == ".help":
-        for name, __, description in COMMANDS:
-            print(f"  {name:<10} - {description}", file=sys.stderr)
-        return True
-    return False
-
-
-COMMANDS = {
-    (
-        ".editor",
-        editor,
-        "open $EDITOR as external editor",
-    ),
-    (
-        ".exit",
-        _exit,
-        "exit interactive console",
-    ),
-    (
-        ".export",
-        export,
-        "export dialogue as .md file",
-    ),
-    (
-        ".help",
-        _help,
-        "show help for commands",
-    ),
-}
-
-try:
-    from prompt_toolkit import PromptSession
-    from prompt_toolkit.completion import Completer, Completion
-    from prompt_toolkit.history import InMemoryHistory
-
-    class DotCommandCompleter(Completer):
-        def get_completions(self, document, complete_event):
-            text = document.text_before_cursor.strip()
-            if text.startswith("."):
-                for name, _, description in COMMANDS:
-                    if name.startswith(text):
-                        yield Completion(
-                            name + " ",
-                            start_position=-len(text),
-                            display_meta=description,
-                        )
-
-    session = PromptSession(
-        completer=DotCommandCompleter(),
-        history=InMemoryHistory(),
-        complete_in_thread=True,
-    )
-
-    get_input = session.prompt
-
-except ImportError:
-    print(
-        "Warning: Completion is not enabled as 'prompt-toolkit' is not installed.",
-        file=sys.stderr,
-    )
-    get_input = input
+@console.register_command("exit", description="exit the repl")
+def exit_command(console: Console, args: list[str]):
+    console.running = False
 
 
 def main():
-    with Chat(USERNAME, PASSWORD, COOKIE_FILE, LOGGER) as chat:
-        chat.connect_to_agent("DeepSeek-R1-32B")
-        chat.new_dialogue()
-        print("Note: type '.help' to get help for commands.")
-        while True:
-            try:
-                user_msg = get_input(">>> ").strip()
-                for _, func, _ in COMMANDS:
-                    if func(user_msg, chat):
-                        break
-                else:
-                    if user_msg.startswith("."):
-                        print("[Error: Unknown command]", file=sys.stderr)
-                    else:
-                        chat.send_msg(user_msg)
-                        for token in chat.iter_response():
-                            print(token, end="", flush=True)
-            except KeyboardInterrupt:
-                print(file=sys.stderr)
-                continue
-            except EOFError:
-                break
+    console.interactive()
