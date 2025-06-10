@@ -1,7 +1,3 @@
-import base64
-from Cryptodome.Cipher import AES
-from Cryptodome.Util import Padding
-import lxml.etree
 import tenacity
 
 OCR = None
@@ -23,9 +19,20 @@ def validiate_cookies(session):
 
 
 def get_auth(session, username, password):
+    if validiate_cookies(session):
+        return
     try:
-        if not validiate_cookies(session):
-            get_auth_retry(session, username, password)
+        global base64, AES, Padding, lxml
+        import base64
+        from Cryptodome.Cipher import AES
+        from Cryptodome.Util import Padding
+        import lxml.etree
+
+        get_auth_retry(session, username, password)
+    except ImportError:
+        raise ModuleNotFoundError(
+            "run `pip install 'nju-deepseek[auth]'` to install missing dependencies"
+        ) from None
     except tenacity.RetryError:
         raise ValueError("Authentication failed") from None
 

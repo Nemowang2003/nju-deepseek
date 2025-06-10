@@ -16,6 +16,8 @@ A Python package for accessing agents listed on https://chat.nju.edu.cn/deepseek
 ## Installation
 ```bash
 pip install nju-deepseek
+# For automatic authentication (optional but recommended)
+pip install 'nju-deepseek[auth]'
 # For available cli (optional)
 pip install 'nju-deepseek[cli]'
 ```

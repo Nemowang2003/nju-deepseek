@@ -129,13 +129,9 @@ wheels = [
 
 [[package]]
 name = "nju-deepseek"
-version = "0.2.0"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
-    { name = "lxml" },
-    { name = "onnxruntime" },
-    { name = "pillow" },
-    { name = "pycryptodomex" },
     { name = "python-socketio", extra = ["client"] },
     { name = "requests" },
     { name = "tenacity" },
@@ -143,6 +139,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+auth = [
+    { name = "lxml" },
+    { name = "onnxruntime" },
+    { name = "pillow" },
+    { name = "pycryptodomex" },
+]
 cli = [
     { name = "platformdirs" },
     { name = "prompt-toolkit" },
@@ -150,18 +152,18 @@ cli = [
 
 [package.metadata]
 requires-dist = [
-    { name = "lxml", specifier = ">=5.4.0" },
-    { name = "onnxruntime", specifier = ">=1.22.0" },
-    { name = "pillow", specifier = ">=11.2.1" },
+    { name = "lxml", marker = "extra == 'auth'", specifier = ">=5.4.0" },
+    { name = "onnxruntime", marker = "extra == 'auth'", specifier = ">=1.22.0" },
+    { name = "pillow", marker = "extra == 'auth'", specifier = ">=11.2.1" },
     { name = "platformdirs", marker = "extra == 'cli'", specifier = ">=4.3.8" },
     { name = "prompt-toolkit", marker = "extra == 'cli'", specifier = ">=3.0.51" },
-    { name = "pycryptodomex", specifier = ">=3.23.0" },
+    { name = "pycryptodomex", marker = "extra == 'auth'", specifier = ">=3.23.0" },
     { name = "python-socketio", extras = ["client"], specifier = ">=5.13.0" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "websocket-client", specifier = ">=1.8.0" },
 ]
-provides-extras = ["cli"]
+provides-extras = ["auth", "cli"]
 
 [[package]]
 name = "numpy"

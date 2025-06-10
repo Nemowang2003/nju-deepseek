@@ -6,7 +6,7 @@ try:
     from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 except ImportError:
     raise ModuleNotFoundError(
-        f"run `pip install '{__package__}[cli]'` to install missing dependencies"
+        "run `pip install 'nju-deepseek[cli]'` to install missing dependencies"
     ) from None
 
 from . import Chat
@@ -189,7 +189,7 @@ console = Console()
 @console.register_command("help", description="show help message")
 def help_command(console: Console, args: list[str]):
     for command, entry in sorted(console.commands.items()):
-        print(f"{' '.join([command, entry.args]):30}{entry.description}")
+        print(f"{' '.join([command, entry.args]): <30}{entry.description}")
     print(
         "",
         "Press Ctrl+O to open an editor ($EDITOR, default to vim) to edit the input buffer.",
